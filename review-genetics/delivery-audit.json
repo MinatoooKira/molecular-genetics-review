@@ -1,0 +1,62 @@
+{
+  "lectures": [
+    {
+      "lecture": 1,
+      "pages": 87,
+      "file": "Genetics 1 Introduction of Genetics — 中文逐页精讲.html",
+      "bytes": 21578707,
+      "sha256": "65a23b9b0dc79b32e09edbb9123706124c85f8663f8f043f5a918cf35014c887"
+    },
+    {
+      "lecture": 2,
+      "pages": 64,
+      "file": "Genetics 2 Mendel's Principles of Heredity — 中文逐页精讲.html",
+      "bytes": 14602985,
+      "sha256": "0a0f0d5d9aa53cdad4ae4601594bf925e7337925ddea6faeb93c3774d378e914"
+    },
+    {
+      "lecture": 3,
+      "pages": 87,
+      "file": "Genetics 3 Extensions to Mendel's Laws — 中文逐页精讲.html",
+      "bytes": 19473960,
+      "sha256": "064f03b048cef7f10c352ecb0f2eef9e5dff2455ac6f37241146ac049fc88433"
+    },
+    {
+      "lecture": 4,
+      "pages": 52,
+      "file": "Genetics 4 The Chromosome Theory of Inheritance — 中文逐页精讲.html",
+      "bytes": 12009145,
+      "sha256": "fc268cdbea9e550d0f47bf933dc30860351abe1e3c595c819fbd6a840cb3dda0"
+    },
+    {
+      "lecture": 5,
+      "pages": 71,
+      "file": "Genetics 5 Sex Determination and Sex Chromosomes — 中文逐页精讲.html",
+      "bytes": 16346204,
+      "sha256": "f2176521e46a647df3c105dca647cd1e73ad47f674da405cc2790391073867ee"
+    },
+    {
+      "lecture": 6,
+      "pages": 60,
+      "file": "Genetics 6 Linkage and Recombination — 中文逐页精讲.html",
+      "bytes": 14311296,
+      "sha256": "e80a21628b193b7f17539f72612cb6416dba1b1576443ae40b63ada52b982c1a"
+    },
+    {
+      "lecture": 7,
+      "pages": 71,
+      "file": "Genetics 7 Chromosome Mutations — 中文逐页精讲.html",
+      "bytes": 17536379,
+      "sha256": "92244d96eb1f3ccb9867f9365ae9fc019753a64913224beb51be45417324fef3"
+    },
+    {
+      "lecture": 8,
+      "pages": 65,
+      "file": "Genetics 8 Gene Mutations — 中文逐页精讲.html",
+      "bytes": 16630558,
+      "sha256": "c79464a4fd67e99419cd5eb0ee95fafae56ecae96e9b3544cfb33d90ac3b4a17"
+    }
+  ],
+  "totalPages": 557,
+  "passed": true
+}
