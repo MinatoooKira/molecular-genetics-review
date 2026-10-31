@@ -17,6 +17,8 @@
 .translation table.schedule th:first-child,.translation table.schedule td:first-child{width:21%}.translation table.schedule th:nth-child(2){width:34%}.translation table.schedule th:nth-child(3){width:17%}.translation table.schedule th:nth-child(4){width:10%}.translation table.schedule th:nth-child(5){width:18%}
 #mediaHost video{display:block;width:100%;border-radius:6px;background:#102821}.video-note{font-size:11px;color:#677b6e;margin:10px 0}.slide-button[hidden]{display:none}@media print{#mediaHost video{display:none}.slide-button[hidden]{display:block}}
 .course-home{color:#cfdfcc;padding:8px 22px 12px;font-size:11px;text-decoration:none}.course-home:hover{color:white;text-decoration:underline}.lecture-card h2{font-size:25px;line-height:1.25}.lecture-card p{margin-top:8px}@media print{.course-home{display:none}}
+
+.home-link{display:inline-flex;align-items:center;gap:4px;padding:6px 10px;border:1px solid var(--line);border-radius:7px;color:var(--accent);background:transparent;text-decoration:none;font-size:11px;line-height:1.4;white-space:nowrap}.home-link:hover{background:#eaf0e8;border-color:#a8bcae;text-decoration:none}
 </style>
 </head>
 <body>
@@ -31,7 +33,7 @@
   <a class="course-home" href="index.html">← 返回全部 9 讲</a><div class="rail-bottom"><button id="guideBtn">使用说明与来源</button><button id="exportBtn">导出笔记</button></div>
 </aside>
 <div class="workspace">
- <header class="topbar"><div class="top-left"><button class="icon menu" id="menuBtn" aria-label="打开目录" aria-expanded="false">☰</button><span class="breadcrumb">LECTURE 08 <span>/</span> <b id="chapterName">同源重组的作用与断裂来源</b></span></div><div class="top-actions"><button id="fontBtn" title="切换正文字号" aria-label="切换为大字号">字 ＋</button><button id="printBtn">打印本页</button></div></header>
+ <header class="topbar"><div class="top-left"><button class="icon menu" id="menuBtn" aria-label="打开目录" aria-expanded="false">☰</button><span class="breadcrumb">LECTURE 08 <span>/</span> <b id="chapterName">同源重组的作用与断裂来源</b></span></div><div class="top-actions"><a class="home-link" href="../" aria-label="返回分子生物学与遗传学总主页">⌂ 总主页</a><button id="fontBtn" title="切换正文字号" aria-label="切换为大字号">字 ＋</button><button id="printBtn">打印本页</button></div></header>
  <main id="main" tabindex="-1">
   <div class="page-heading"><div><div class="page-meta"><span id="pageTag">PAGE 01 / 53</span><span class="edition">中文精讲 · v1</span></div><h1 id="pageTitle"></h1></div><button class="flag-btn" id="flagBtn" aria-pressed="false">☆ 待复习</button></div>
   <div class="viewbar"><div class="view-switch" role="group" aria-label="学习模式"><button data-mode="compare" aria-pressed="true">对照学习</button><button data-mode="focus" aria-pressed="false">专注讲解</button><button data-mode="quiz" aria-pressed="false">主动回忆</button></div><span id="modeHint">原页 · 译文 · 机制</span></div>
