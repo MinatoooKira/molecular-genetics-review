@@ -1,19 +1,5 @@
-# 公网问答接口
+# 公网问答说明
 
-GitHub Pages 只负责静态网页，不能安全地保存 API key，也不能执行后端代码。要让所有访客都能使用“本页问答”，需要把 `api/chat.js` 部署到 Vercel、Cloudflare Worker 或其他云端函数。
+当前网页按你的要求固定连接本机 Ollama 的 `deepseek-r1:14b`。GitHub Pages 本身只能提供静态文件，不能在访客的浏览器里替你启动本机模型，因此公开网页上的问答只会在“打开网页的电脑同时运行了本机后端”时可用。
 
-## Vercel 部署方式
-
-1. 在 Vercel 中导入 GitHub 仓库 `MinatoooKira/molecular-genetics-review`。
-2. 在项目 Settings → Environment Variables 添加：
-   - `OPENAI_API_KEY`：你的 API key（只放 Vercel，不要提交到 GitHub）
-   - `ALLOWED_ORIGIN`：`https://minatoookira.github.io`
-3. 部署后得到接口地址，例如：
-   `https://你的项目名.vercel.app/api/chat`
-4. 将这个接口地址写入 `chat-widget.js` 的 `window.MOLECULAR_CHAT_ENDPOINT` 配置并重新推送 GitHub Pages。
-
-接口默认使用 `gpt-6.1-sol` 与 `medium` 推理强度，并有简单的来源校验和 IP 频率限制。
-
-## 本机 DeepSeek 的位置
-
-本机 Ollama/DeepSeek 仍可用于你自己的测试，但不会被公网访客调用。若要把本机模型暴露到公网，需要隧道、长期运行的电脑和额外的访问控制；这不适合作为公开课程站点的默认后端。
+如果未来要让其他用户也使用同一个 14B，需要把 Ollama 运行在一台持续在线的电脑或 GPU 服务器上，再通过带访问控制的 HTTPS 转发服务提供接口。不要把 Ollama 端口直接暴露到公网，也不要把任何密钥写进网页源码。

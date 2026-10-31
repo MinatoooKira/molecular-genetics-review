@@ -3,7 +3,7 @@
 
   const LOCAL_ENDPOINT = 'http://127.0.0.1:8765/api/chat';
   const ENDPOINT = (window.MOLECULAR_CHAT_ENDPOINT || localStorage.getItem('molecular-chat-endpoint') || LOCAL_ENDPOINT).trim();
-  const MODEL_LABEL = 'gpt-6.1-sol · medium';
+  const MODEL_LABEL = 'deepseek-r1:14b · 本机 Ollama';
   const MAX_STORED_MESSAGES = 24;
   const MAX_CONTEXT_CHARS = 18000;
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -192,7 +192,7 @@
     } catch (error) {
       const detail = String(error?.message || error);
       const hint = detail.includes('Failed to fetch') || detail.includes('NetworkError') || detail.includes('fetch')
-        ? '本机问答服务没有连接上。请先启动 local-backend.py；如果你要让其他用户也能使用，需要把同一个接口部署到云端。'
+        ? '本机问答服务没有连接上。请先启动 Ollama 和 start-local-backend.sh；这个网页的问答会连接你自己的电脑。'
         : `问答接口暂时不可用：${detail}`;
       explainUnavailable(hint);
     } finally {

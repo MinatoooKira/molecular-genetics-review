@@ -1,5 +1,6 @@
-const MODEL = 'gpt-6.1-sol';
-const OPENAI_URL = 'https://api.openai.com/v1/responses';
+// 可选的公网转发模板：把请求转发到一台受保护的 Ollama 服务器。
+// 默认模型仍固定为 deepseek-r1:14b；本机使用不需要部署这个文件。
+const MODEL = 'deepseek-r1:14b';
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'https://minatoookira.github.io';
 const rateMap = new Map();
 
@@ -13,21 +14,11 @@ function cleanMessages(messages) {
   });
 }
 
-function extractText(data) {
-  const chunks = [];
-  for (const item of data.output || []) {
-    for (const content of item.content || []) {
-      if ((content.type === 'output_text' || content.type === 'text') && content.text) chunks.push(content.text);
-    }
-  }
-  return (chunks.join('\n') || data.output_text || '').trim();
-}
-
 function send(res, status, body, origin = ALLOWED_ORIGIN) {
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Access-Control-Allow-Origin', origin);
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.end(JSON.stringify(body));
 }
@@ -52,7 +43,8 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return send(res, 405, { error: '只支持 POST' }, origin);
   if (!allowedRequest(req)) return send(res, 403, { error: '来源未获允许' }, ALLOWED_ORIGIN);
   if (rateLimited(req)) return send(res, 429, { error: '请求过于频繁，请稍后再试' }, origin);
-  if (!process.env.OPENAI_API_KEY) return send(res, 503, { error: '服务端尚未配置 OPENAI_API_KEY' }, origin);
+  const base = String(process.env.OLLAMA_PUBLIC_URL || '').replace(/\/$/, '');
+  if (!base) return send(res, 503, { error: '服务端尚未配置 OLLAMA_PUBLIC_URL' }, origin);
 
   const payload = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
   const pageContext = payload.pageContext || {};
@@ -60,19 +52,26 @@ module.exports = async function handler(req, res) {
   if (!history.length) return send(res, 400, { error: '没有可回答的问题' }, origin);
   const pageText = String(pageContext.text || '').slice(0, 18000);
   const input = `【当前页面资料】\n${pageText}\n\n【对话历史】\n${history.join('\n')}`;
+  const headers = { 'Content-Type': 'application/json' };
+  if (process.env.OLLAMA_SHARED_SECRET) headers.Authorization = `Bearer ${process.env.OLLAMA_SHARED_SECRET}`;
 
   try {
-    const upstream = await fetch(OPENAI_URL, {
+    const upstream = await fetch(`${base}/api/chat`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: MODEL, reasoning: { effort: 'medium' }, instructions: SYSTEM_PROMPT, input, max_output_tokens: 1400 }),
+      headers,
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content: input }],
+        stream: false,
+        options: { temperature: 0.2 },
+      }),
     });
     const data = await upstream.json();
-    if (!upstream.ok) return send(res, upstream.status, { error: data?.error?.message || 'OpenAI API 请求失败' }, origin);
-    const answer = extractText(data);
+    if (!upstream.ok) return send(res, upstream.status, { error: data?.error || 'Ollama 请求失败' }, origin);
+    const answer = String(data?.message?.content || '').trim();
     if (!answer) return send(res, 502, { error: '模型没有返回文字答案' }, origin);
-    return send(res, 200, { answer, model: MODEL, backend: 'vercel-openai' }, origin);
+    return send(res, 200, { answer, model: MODEL, backend: 'ollama-relay' }, origin);
   } catch (error) {
-    return send(res, 502, { error: `连接模型服务失败：${error.message}` }, origin);
+    return send(res, 502, { error: `连接 Ollama 失败：${error.message}` }, origin);
   }
 };

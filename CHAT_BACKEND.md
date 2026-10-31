@@ -1,64 +1,50 @@
-# 本页问答后端
+# 本页问答：本机 DeepSeek R1 14B
 
-网页端已经在每一个主页、课程目录和逐页课件页加入“本页问答”。默认接口是本机 `http://127.0.0.1:8765/api/chat`。后端现在会优先调用本地 Ollama/DeepSeek；本地模型不可用时，才尝试回退到 OpenAI API。
+网页中的“本页问答”固定使用你自己电脑上的 `deepseek-r1:14b`。网页仍然托管在 GitHub Pages，但回答请求会发给本机 `127.0.0.1` 上运行的 Ollama；不会把 API key 放进网页，也不会把页面内容上传到第三方模型服务。
 
-## 推荐：本地 DeepSeek
+## 第一次安装
 
-这台 Mac 是 Apple Silicon，适合用 Ollama 运行小型模型。当前默认模型是 `deepseek-r1:1.5b`，占用空间约 1.1 GB；如果电脑有足够磁盘空间，可以改用质量更好的 `deepseek-r1:8b` 或 `deepseek-r1:14b`。
-
-1. 从 [Ollama 官方下载页](https://ollama.com/download) 安装 Ollama。
-2. 安装后在终端下载模型：
+1. 从 [Ollama 官方下载页](https://ollama.com/download) 安装并打开 Ollama。
+2. 在终端下载 14B 模型：
 
    ```sh
-   ollama pull deepseek-r1:1.5b
+   ollama pull deepseek-r1:14b
    ```
 
-3. 启动本页问答后端：
+   该模型约占 9 GB，首次下载需要一些时间。下载完成后可用下面的命令确认：
+
+   ```sh
+   ollama list
+   ```
+
+3. 在本项目目录启动问答接口：
 
    ```sh
    ./start-local-backend.sh
    ```
 
-4. 保持终端和 Ollama 运行，然后打开 GitHub Pages。网页右下角的“本页问答”会调用本机 DeepSeek。
+   看到 `本机问答后端：http://127.0.0.1:8765/api/chat` 就表示接口已经启动。保持这个终端窗口运行。
 
-如果想切换模型，可以在启动前设置：
+4. 打开课程网页，点击右下角“本页问答”。页面会自动连接本机接口。首次提问时 14B 可能需要几秒到几十秒加载模型。
+
+## 每次使用
+
+打开 Ollama，然后在项目目录执行：
 
 ```sh
-export LOCAL_MODEL='deepseek-r1:8b'
 ./start-local-backend.sh
 ```
 
-也可以强制只使用本地模型：
+不需要配置 OpenAI API key，也不会使用 `gpt-6.1-sol`。本机后端始终把模型固定为 `deepseek-r1:14b`。
 
-```sh
-export CHAT_BACKEND='ollama'
-./start-local-backend.sh
-```
+## 检查是否正常
 
-本机服务绑定在 `127.0.0.1`，其他电脑无法直接使用你的本地模型。若浏览器阻止 GitHub Pages 访问本机接口，可以在本机打开一份课程页面，或把接口迁移到云端。
+在浏览器打开 [http://127.0.0.1:8765/](http://127.0.0.1:8765/)，应看到 JSON 状态，其中 `ollama_reachable` 为 `true`、`local_model` 为 `deepseek-r1:14b`。如果网页提示无法连接，通常是 Ollama 或 `start-local-backend.sh` 没有运行。
 
-## OpenAI 回退
+## 重要边界
 
-如果不想使用本地模型，可以设置 API key；不要把 key 粘贴到聊天窗口，也不要写入仓库：
+这个连接方式只对正在运行后端的这台电脑生效。GitHub Pages 是静态网页，不能替你的电脑运行 14B；其他用户打开网页时不会自动使用你的本机模型。若以后需要让其他用户也能问，需要另行准备一台持续在线的模型服务器或安全的公网转发服务。
 
-```sh
-export CHAT_BACKEND='openai'
-export OPENAI_API_KEY='在 API 平台创建的密钥'
-./start-local-backend.sh
-```
+## 不想启动后端时
 
-Pro 100 是否有可用 API 额度，要先在 ChatGPT 的设置 → Billing 或 API Platform Billing 中领取/确认对应的 API credits，并在 API organization/project 中创建密钥；ChatGPT 订阅额度和 API 额度是两套独立的计费系统。
-
-## 模型设置
-
-本地模式默认使用 `deepseek-r1:1.5b`。OpenAI 回退模式使用 `gpt-6.1-sol`，推理强度为 `medium`。网页只提交当前页的标题、翻译、讲解、图示、易错点、自测题和最近对话，不提交整套课件。
-
-## 如果暂时不用 API：单独 Codex 窗口提示词
-
-网页问答框右下角的“复制提问提示词”会把当前页资料和问题整理成一段中文提示词。可以把它粘贴到另一个 Codex 窗口，使用下面的工作方式：
-
-```text
-你是分子生物学与遗传学课程的中文助教。请只依据我随后提供的“当前页面资料”回答，不要编造页面外事实。先给结论，再按机制、图示、术语和易错点解释；如果资料不足，请明确指出。默认用简体中文，回答要帮助学生理解因果链，而不是复述整页原文。每次回答最后给出一个可以自测的问题。
-```
-
-这条路径是人工复制粘贴的备用方案；网页自动对话需要运行本机后端或部署云端接口。
+问答框中的“复制提问提示词”仍然可用。它会把当前页资料和问题整理成一段中文提示词，方便复制到另一个助教窗口。

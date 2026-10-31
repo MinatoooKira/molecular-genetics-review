@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""本机问答后端：优先调用本地 Ollama/DeepSeek，必要时回退到 OpenAI API。"""
+"""本机问答后端：固定调用本地 Ollama 中的 DeepSeek R1 14B。"""
 import json
 import os
 import sys
@@ -10,10 +10,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 HOST = os.environ.get("MOLECULAR_CHAT_HOST", "127.0.0.1")
 PORT = int(os.environ.get("MOLECULAR_CHAT_PORT", "8765"))
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434/api/chat")
-LOCAL_MODEL = os.environ.get("LOCAL_MODEL", "deepseek-r1:1.5b")
-OPENAI_URL = "https://api.openai.com/v1/responses"
-OPENAI_MODEL = "gpt-6.1-sol"
-BACKEND_MODE = os.environ.get("CHAT_BACKEND", "auto").lower()
+LOCAL_MODEL = os.environ.get("LOCAL_MODEL", "deepseek-r1:14b")
+BACKEND_MODE = os.environ.get("CHAT_BACKEND", "ollama").lower()
 MAX_BODY = 1_000_000
 
 SYSTEM_PROMPT = """你是分子生物学与遗传学课程的中文助教。你正在帮助学生理解当前页面。只使用用户提供的当前页面资料和对话历史来回答，不要把页面之外的猜测说成事实。如果资料不足，直接说明不足，并给出需要补充的内容。回答使用简体中文，先给结论，再分层解释机制、图示和术语；必要时指出常见误区。不要重复整页原文，优先帮助学生建立因果链和可检验的理解。"""
@@ -33,17 +31,6 @@ def response(handler, status, payload):
     handler.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
     handler.end_headers()
     handler.wfile.write(raw)
-
-
-def extract_openai_text(data):
-    chunks = []
-    for item in data.get("output", []) or []:
-        for content in item.get("content", []) or []:
-            if content.get("type") in ("output_text", "text") and content.get("text"):
-                chunks.append(content["text"])
-    if chunks:
-        return "\n".join(chunks).strip()
-    return str(data.get("output_text") or "").strip()
 
 
 def call_ollama(input_text):
@@ -80,38 +67,6 @@ def call_ollama(input_text):
     return answer
 
 
-def call_openai(input_text, api_key):
-    body = {
-        "model": OPENAI_MODEL,
-        "reasoning": {"effort": "medium"},
-        "instructions": SYSTEM_PROMPT,
-        "input": input_text,
-        "max_output_tokens": 1400,
-    }
-    req = urllib.request.Request(
-        OPENAI_URL,
-        data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=90) as upstream:
-            data = json.loads(upstream.read().decode("utf-8"))
-    except urllib.error.HTTPError as error:
-        detail = error.read().decode("utf-8", errors="replace")
-        try:
-            detail = json.loads(detail).get("error", {}).get("message", detail)
-        except json.JSONDecodeError:
-            pass
-        raise BackendError(f"OpenAI API：{detail}") from error
-    except Exception as error:
-        raise BackendError(f"连接 OpenAI API 失败：{error}") from error
-    answer = extract_openai_text(data)
-    if not answer:
-        raise BackendError("OpenAI API 没有返回文字答案")
-    return answer
-
-
 def ollama_is_reachable():
     tags_url = OLLAMA_URL.rsplit("/api/chat", 1)[0] + "/api/tags"
     try:
@@ -136,7 +91,6 @@ class Handler(BaseHTTPRequestHandler):
             "backend_mode": BACKEND_MODE,
             "local_model": LOCAL_MODEL,
             "ollama_reachable": ollama_is_reachable(),
-            "openai_configured": bool(os.environ.get("OPENAI_API_KEY", "").strip()),
             "message": "本机问答服务已启动",
         })
 
@@ -174,31 +128,12 @@ class Handler(BaseHTTPRequestHandler):
         page_text = str(context.get("text") or "")[:18000]
         input_text = "【当前页面资料】\n" + page_text + "\n\n【对话历史】\n" + "\n".join(clean)
 
-        local_error = None
-        if BACKEND_MODE in ("auto", "ollama", "local"):
-            try:
-                answer = call_ollama(input_text)
-                response(self, 200, {"answer": answer, "model": LOCAL_MODEL, "backend": "ollama"})
-                return
-            except BackendError as error:
-                local_error = str(error)
-                if BACKEND_MODE in ("ollama", "local"):
-                    response(self, 503, {"error": local_error})
-                    return
-
-        api_key = os.environ.get("OPENAI_API_KEY", "").strip()
-        if not api_key:
-            hint = "本机未配置 OPENAI_API_KEY，且本地 Ollama/DeepSeek 不可用。请先安装并启动 Ollama，再运行 ollama pull " + LOCAL_MODEL + "。"
-            if local_error:
-                hint += f"（{local_error}）"
-            response(self, 503, {"error": hint})
-            return
         try:
-            answer = call_openai(input_text, api_key)
+            answer = call_ollama(input_text)
         except BackendError as error:
-            response(self, 502, {"error": str(error)})
+            response(self, 503, {"error": str(error) + f"。请确认已运行 ollama pull {LOCAL_MODEL}。"})
             return
-        response(self, 200, {"answer": answer, "model": OPENAI_MODEL, "backend": "openai"})
+        response(self, 200, {"answer": answer, "model": LOCAL_MODEL, "backend": "ollama"})
 
 
 if __name__ == "__main__":
