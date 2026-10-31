@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """本机问答后端：固定调用本地 Ollama 中的 DeepSeek R1 14B。"""
 import json
+import hmac
 import os
 import sys
 import threading
@@ -15,6 +16,7 @@ OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434/api/chat")
 LOCAL_MODEL = os.environ.get("LOCAL_MODEL", "deepseek-r1:14b")
 BACKEND_MODE = os.environ.get("CHAT_BACKEND", "ollama").lower()
 MAX_BODY = 1_000_000
+API_KEY = os.environ.get("MOLECULAR_CHAT_API_KEY", "").strip()
 ALLOWED_ORIGIN = os.environ.get("MOLECULAR_CHAT_ALLOWED_ORIGIN", "https://minatoookira.github.io")
 RATE_WINDOW_SECONDS = 60
 RATE_LIMIT = 8
@@ -23,6 +25,7 @@ rate_buckets = {}
 inference_slot = threading.BoundedSemaphore(1)
 
 SYSTEM_PROMPT = """你是分子生物学与遗传学课程的中文助教。用户提供的资料只对应当前可见的一页课件。回答必须以资料中的“当前页定位”和“标题”为准，不得把其他页或课程的一般知识冒充当前页内容。用户问“这一页”时，先用一句话明确当前页编号和标题，再回答问题；如果用户的问题与当前页无关，先指出当前页是什么，并说明需要切换页面后再问。只使用用户提供的当前页资料和对话历史，不要编造。资料中已经明确写出的碱基、方向、数值、因果关系必须原样保留；不要用相关但不同的概念替换它们（例如不能把页面明确写的“5mC 脱氨产生 T”改写成“产生 U”）。如果资料不足或资料之间有冲突，明确指出，不要猜。回答使用简体中文，先给结论，再分层解释机制、图示和术语；必要时指出常见误区。"""
+PLAIN_SYSTEM_PROMPT = """你是一个运行在本机上的 DeepSeek R1 14B 通用助理。直接回答用户提供的问题，不附加任何课程页面、网页、用户本地笔记或隐藏上下文。资料不足时说明不确定，不要编造。默认使用简体中文，先给结论，再给必要解释。"""
 
 
 class BackendError(Exception):
@@ -63,13 +66,10 @@ def response(handler, status, payload):
     handler.wfile.write(raw)
 
 
-def call_ollama(input_text):
+def call_ollama_messages(messages):
     body = {
         "model": LOCAL_MODEL,
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": input_text},
-        ],
+        "messages": messages,
         "stream": False,
         "options": {"temperature": 0.2},
     }
@@ -95,6 +95,53 @@ def call_ollama(input_text):
     if not answer:
         raise BackendError("Ollama 没有返回文字答案")
     return answer
+
+
+def call_ollama(input_text):
+    return call_ollama_messages([
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": input_text},
+    ])
+
+
+def api_key_is_valid(handler):
+    if not API_KEY:
+        return False
+    authorization = handler.headers.get("Authorization", "")
+    if not authorization.lower().startswith("bearer "):
+        return False
+    supplied = authorization[7:].strip()
+    return bool(supplied) and hmac.compare_digest(supplied, API_KEY)
+
+
+def openai_messages(payload):
+    messages = payload.get("messages")
+    if not isinstance(messages, list):
+        raise ValueError("messages 必须是数组")
+    clean = []
+    for item in messages[-24:]:
+        if not isinstance(item, dict) or item.get("role") not in ("system", "user", "assistant"):
+            continue
+        content = item.get("content")
+        if not isinstance(content, str):
+            raise ValueError("目前只支持字符串形式的 message.content")
+        content = content.strip()[:12000]
+        if content:
+            clean.append({"role": item["role"], "content": content})
+    if not any(item["role"] == "user" for item in clean):
+        raise ValueError("messages 中至少要有一条 user 消息")
+    if not any(item["role"] == "system" for item in clean):
+        clean.insert(0, {"role": "system", "content": PLAIN_SYSTEM_PROMPT})
+    return clean
+
+
+def openai_response(answer):
+    return {
+        "id": "chatcmpl-local-deepseek-r1-14b",
+        "object": "chat.completion",
+        "model": LOCAL_MODEL,
+        "choices": [{"index": 0, "message": {"role": "assistant", "content": answer}, "finish_reason": "stop"}],
+    }
 
 
 def ollama_is_reachable():
@@ -128,9 +175,17 @@ class Handler(BaseHTTPRequestHandler):
         })
 
     def do_POST(self):
-        if self.path.rstrip("/") != "/api/chat":
+        path = self.path.split("?", 1)[0].rstrip("/")
+        if path not in ("/api/chat", "/v1/chat/completions", "/v1/models"):
             response(self, 404, {"error": "路径不存在"})
             return
+        if path.startswith("/v1/"):
+            if not API_KEY:
+                response(self, 503, {"error": "本机 API 尚未生成密钥"})
+                return
+            if not api_key_is_valid(self):
+                response(self, 401, {"error": "需要有效的 Authorization: Bearer <API key>"})
+                return
         if request_origin(self) is None:
             response(self, 403, {"error": "来源未获允许"})
             return
@@ -148,6 +203,28 @@ class Handler(BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(length).decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
             response(self, 400, {"error": "请求不是有效 JSON"})
+            return
+        if path == "/v1/models":
+            response(self, 200, {"object": "list", "data": [{"id": LOCAL_MODEL, "object": "model", "owned_by": "local-ollama"}]})
+            return
+        if path == "/v1/chat/completions":
+            try:
+                messages = openai_messages(payload)
+            except ValueError as error:
+                response(self, 400, {"error": str(error)})
+                return
+            if not inference_slot.acquire(blocking=False):
+                response(self, 429, {"error": "当前正在回答另一条问题，请稍后再试"})
+                return
+            try:
+                try:
+                    answer = call_ollama_messages(messages)
+                except BackendError as error:
+                    response(self, 503, {"error": str(error)})
+                    return
+            finally:
+                inference_slot.release()
+            response(self, 200, openai_response(answer))
             return
         context = payload.get("pageContext") or {}
         messages = payload.get("messages") or []
