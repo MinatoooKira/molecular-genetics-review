@@ -26,13 +26,15 @@
     const lessonNode = document.getElementById('lesson-data');
     let page = null;
     let pageNo = pageNumberFromHash();
+    const visiblePage = document.getElementById('pageTag')?.textContent?.match(/(?:PAGE|页)\s*0*(\d+)/i);
+    if (visiblePage) pageNo = Number(visiblePage[1]);
     let pageCount = null;
     let courseType = document.title.includes('遗传学') ? '遗传学' : '分子生物学';
     if (lessonNode) {
       try {
         const pages = JSON.parse(lessonNode.textContent);
         pageCount = pages.length;
-        page = pages[pageNo - 1] || pages[0];
+        page = pages.find(candidate => Number(candidate?.n) === pageNo) || pages[pageNo - 1] || pages[0];
       } catch (error) {
         page = null;
       }
@@ -42,8 +44,9 @@
       const parts = [
         `课程：${courseType}`,
         `课件：${document.title}`,
-        `当前页：第 ${pageNo} / ${pageCount} 页`,
+        `当前页定位：第 ${Number(page.n || pageNo)} / ${pageCount} 页`,
         `标题：${flatten(page.title)}`,
+        '以下资料只属于这一页；回答“这一页”时必须以此页为准。',
         `导语：${flatten(page.lead)}`,
         `中文翻译与页内文字：${flatten(page.translation || page.text)}`,
         `逐步讲解：${flatten(page.steps)}`,
@@ -53,7 +56,7 @@
         `参考答案：${flatten(page.a)}`,
         `原始课件文字：${flatten(page.sourceText)}`
       ];
-      return { kind: 'lecture', course: courseType, page: pageNo, pageCount, title: flatten(page.title) || document.title, text: parts.join('\n\n').slice(0, MAX_CONTEXT_CHARS) };
+      return { kind: 'lecture', course: courseType, page: Number(page.n || pageNo), pageCount, title: flatten(page.title) || document.title, text: parts.join('\n\n').slice(0, MAX_CONTEXT_CHARS) };
     }
     const visible = mainText.slice(0, 8000);
     return { kind: 'index', course: courseType, page: null, pageCount: null, title: document.title, text: `页面标题：${document.title}\n页面内容摘要：${visible}`.slice(0, MAX_CONTEXT_CHARS) };
@@ -237,7 +240,22 @@
     updateTitle();
   }
 
+  function watchVisiblePage() {
+    const marker = document.getElementById('pageTag');
+    if (!marker || typeof MutationObserver === 'undefined') return;
+    let previous = marker.textContent;
+    const observer = new MutationObserver(() => {
+      const next = marker.textContent;
+      if (next !== previous) {
+        previous = next;
+        refreshContext();
+      }
+    });
+    observer.observe(marker, { childList: true, characterData: true, subtree: true });
+  }
+
   buildWidget();
+  watchVisiblePage();
   window.addEventListener('hashchange', () => { refreshContext(); });
   document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && widget?.classList.contains('open')) setOpen(false); });
 })();

@@ -4,7 +4,7 @@ const MODEL = 'deepseek-r1:14b';
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'https://minatoookira.github.io';
 const rateMap = new Map();
 
-const SYSTEM_PROMPT = `你是分子生物学与遗传学课程的中文助教。你正在帮助学生理解当前页面。只使用用户提供的当前页面资料和对话历史来回答，不要把页面之外的猜测说成事实。如果资料不足，直接说明不足。回答使用简体中文，先给结论，再分层解释机制、图示和术语；必要时指出常见误区。不要重复整页原文，优先帮助学生建立因果链和可检验的理解。`;
+const SYSTEM_PROMPT = `你是分子生物学与遗传学课程的中文助教。用户提供的资料只对应当前可见的一页课件。回答必须以资料中的当前页编号和标题为准，不得把其他页或课程的一般知识冒充当前页内容。用户问“这一页”时，先用一句话明确当前页编号和标题，再回答问题；如果问题与当前页无关，先指出当前页是什么。只使用用户提供的当前页资料和对话历史，不要编造。资料中已经明确写出的碱基、方向、数值、因果关系必须原样保留；不要用相关但不同的概念替换它们（例如不能把页面明确写的“5mC 脱氨产生 T”改写成“产生 U”）。如果资料不足或资料之间有冲突，明确指出，不要猜。回答使用简体中文，先给结论，再分层解释机制、图示和术语；必要时指出常见误区。`;
 
 function cleanMessages(messages) {
   return (Array.isArray(messages) ? messages : []).slice(-12).flatMap((item) => {
@@ -51,7 +51,8 @@ module.exports = async function handler(req, res) {
   const history = cleanMessages(payload.messages);
   if (!history.length) return send(res, 400, { error: '没有可回答的问题' }, origin);
   const pageText = String(pageContext.text || '').slice(0, 18000);
-  const input = `【当前页面资料】\n${pageText}\n\n【对话历史】\n${history.join('\n')}`;
+  const pageHeader = `课程：${String(pageContext.course || '未提供')}\n课件当前页：第 ${String(pageContext.page || pageContext.pageNumber || '未知')} / ${String(pageContext.pageCount || '未知')} 页\n当前页标题：${String(pageContext.title || '未提供').slice(0, 300)}`;
+  const input = `【当前页唯一资料】\n${pageHeader}\n${pageText}\n\n【对话历史】\n${history.join('\n')}`;
   const headers = { 'Content-Type': 'application/json' };
   if (process.env.OLLAMA_SHARED_SECRET) headers.Authorization = `Bearer ${process.env.OLLAMA_SHARED_SECRET}`;
 

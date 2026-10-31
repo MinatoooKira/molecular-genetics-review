@@ -14,7 +14,7 @@ LOCAL_MODEL = os.environ.get("LOCAL_MODEL", "deepseek-r1:14b")
 BACKEND_MODE = os.environ.get("CHAT_BACKEND", "ollama").lower()
 MAX_BODY = 1_000_000
 
-SYSTEM_PROMPT = """你是分子生物学与遗传学课程的中文助教。你正在帮助学生理解当前页面。只使用用户提供的当前页面资料和对话历史来回答，不要把页面之外的猜测说成事实。如果资料不足，直接说明不足，并给出需要补充的内容。回答使用简体中文，先给结论，再分层解释机制、图示和术语；必要时指出常见误区。不要重复整页原文，优先帮助学生建立因果链和可检验的理解。"""
+SYSTEM_PROMPT = """你是分子生物学与遗传学课程的中文助教。用户提供的资料只对应当前可见的一页课件。回答必须以资料中的“当前页定位”和“标题”为准，不得把其他页或课程的一般知识冒充当前页内容。用户问“这一页”时，先用一句话明确当前页编号和标题，再回答问题；如果用户的问题与当前页无关，先指出当前页是什么，并说明需要切换页面后再问。只使用用户提供的当前页资料和对话历史，不要编造。资料中已经明确写出的碱基、方向、数值、因果关系必须原样保留；不要用相关但不同的概念替换它们（例如不能把页面明确写的“5mC 脱氨产生 T”改写成“产生 U”）。如果资料不足或资料之间有冲突，明确指出，不要猜。回答使用简体中文，先给结论，再分层解释机制、图示和术语；必要时指出常见误区。"""
 
 
 class BackendError(Exception):
@@ -126,7 +126,11 @@ class Handler(BaseHTTPRequestHandler):
             response(self, 400, {"error": "没有可回答的问题"})
             return
         page_text = str(context.get("text") or "")[:18000]
-        input_text = "【当前页面资料】\n" + page_text + "\n\n【对话历史】\n" + "\n".join(clean)
+        page_no = context.get("page") or context.get("pageNumber") or "未知"
+        page_count = context.get("pageCount") or "未知"
+        page_title = str(context.get("title") or "未提供")[:300]
+        page_header = f"课程：{context.get('course') or '未提供'}\n课件当前页：第 {page_no} / {page_count} 页\n当前页标题：{page_title}"
+        input_text = "【当前页唯一资料】\n" + page_header + "\n" + page_text + "\n\n【对话历史】\n" + "\n".join(clean)
 
         try:
             answer = call_ollama(input_text)
