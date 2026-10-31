@@ -1,34 +1,57 @@
 # 本页问答后端
 
-Pro 100 是否有可用 API 额度，要先在 ChatGPT 的设置 → Billing 或 API Platform Billing 中领取/确认对应的 API credits，并在 API organization/project 中创建密钥；ChatGPT 订阅额度和 API 额度是两套独立的计费系统。
+网页端已经在每一个主页、课程目录和逐页课件页加入“本页问答”。默认接口是本机 `http://127.0.0.1:8765/api/chat`。后端现在会优先调用本地 Ollama/DeepSeek；本地模型不可用时，才尝试回退到 OpenAI API。
 
-网页端已经在每一个主页、课程目录和逐页课件页加入“本页问答”。默认接口是本机 `http://127.0.0.1:8765/api/chat`，API 密钥只从本机环境变量读取，不会进入网页代码或 GitHub 仓库。
+## 推荐：本地 DeepSeek
 
-## 在本机试用
+这台 Mac 是 Apple Silicon，适合用 Ollama 运行小型模型。当前默认模型是 `deepseek-r1:1.5b`，占用空间约 1.1 GB；如果电脑有足够磁盘空间，可以改用质量更好的 `deepseek-r1:8b` 或 `deepseek-r1:14b`。
 
-1. 在终端设置你自己的 API key（不要把 key 粘贴到聊天窗口，也不要写入仓库）：
+1. 从 [Ollama 官方下载页](https://ollama.com/download) 安装 Ollama。
+2. 安装后在终端下载模型：
 
    ```sh
-   export OPENAI_API_KEY='在 API 平台创建的密钥'
+   ollama pull deepseek-r1:1.5b
    ```
 
-2. 启动服务：
+3. 启动本页问答后端：
 
    ```sh
    ./start-local-backend.sh
    ```
 
-3. 保持终端运行，然后打开 GitHub Pages。网页右下角的“本页问答”会调用本机服务。
+4. 保持终端和 Ollama 运行，然后打开 GitHub Pages。网页右下角的“本页问答”会调用本机 DeepSeek。
 
-如果网页显示接口不可用，先确认服务仍在运行，并在浏览器打开 `http://127.0.0.1:8765/` 检查是否返回“本机问答服务已启动”。
+如果想切换模型，可以在启动前设置：
 
-## 换成云端接口
+```sh
+export LOCAL_MODEL='deepseek-r1:8b'
+./start-local-backend.sh
+```
 
-将同样的 `/api/chat` 接口部署到 Vercel、Cloudflare Worker 或其他服务器，把 API key 设置为服务器密钥，再在网页问答框右上角的 ⚙ 中填入云端接口地址。访客只会看到接口地址，永远不会看到 API key。
+也可以强制只使用本地模型：
+
+```sh
+export CHAT_BACKEND='ollama'
+./start-local-backend.sh
+```
+
+本机服务绑定在 `127.0.0.1`，其他电脑无法直接使用你的本地模型。若浏览器阻止 GitHub Pages 访问本机接口，可以在本机打开一份课程页面，或把接口迁移到云端。
+
+## OpenAI 回退
+
+如果不想使用本地模型，可以设置 API key；不要把 key 粘贴到聊天窗口，也不要写入仓库：
+
+```sh
+export CHAT_BACKEND='openai'
+export OPENAI_API_KEY='在 API 平台创建的密钥'
+./start-local-backend.sh
+```
+
+Pro 100 是否有可用 API 额度，要先在 ChatGPT 的设置 → Billing 或 API Platform Billing 中领取/确认对应的 API credits，并在 API organization/project 中创建密钥；ChatGPT 订阅额度和 API 额度是两套独立的计费系统。
 
 ## 模型设置
 
-后端默认请求 `gpt-6.1-sol`，推理强度为 `medium`。网页只提交当前页的标题、翻译、讲解、图示、易错点、自测题和最近对话，不提交整套课件。
+本地模式默认使用 `deepseek-r1:1.5b`。OpenAI 回退模式使用 `gpt-6.1-sol`，推理强度为 `medium`。网页只提交当前页的标题、翻译、讲解、图示、易错点、自测题和最近对话，不提交整套课件。
 
 ## 如果暂时不用 API：单独 Codex 窗口提示词
 
