@@ -2,7 +2,7 @@
   'use strict';
 
   const LOCAL_ENDPOINT = 'http://127.0.0.1:8765/api/chat';
-  const PUBLIC_ENDPOINT = 'https://radio-lawrence-extremely-guam.trycloudflare.com/api/chat';
+  const PUBLIC_ENDPOINT = 'https://api.u261625.nyat.app:30689/api/chat';
   const ENDPOINT = (window.MOLECULAR_CHAT_ENDPOINT || localStorage.getItem('molecular-chat-endpoint') || PUBLIC_ENDPOINT || LOCAL_ENDPOINT).trim();
   const MODEL_LABEL = 'deepseek-r1:14b · 本机 Ollama';
   const MAX_STORED_MESSAGES = 24;

@@ -1,10 +1,10 @@
 # 公网问答说明
 
-当前网页按你的要求固定连接本机 Ollama 的 `deepseek-r1:14b`。GitHub Pages 本身只能提供静态文件，因此通过 Cloudflare Quick Tunnel 把 `/api/chat` 转发到本机后端，让其他访客也可以使用本机模型。
+当前网页按你的要求固定连接本机 Ollama 的 `deepseek-r1:14b`。GitHub Pages 本身只能提供静态文件，因此通过 SakuraFrp TCP 隧道把 `/api/chat` 转发到本机后端，让其他访客也可以使用本机模型。
 
-当前 Quick Tunnel 地址由 Cloudflare 临时分配，电脑必须保持开机、联网并运行 Ollama、`start-local-backend.sh` 和 `cloudflared tunnel`。本机后端只允许 GitHub Pages 来源，并限制请求频率、请求体大小和同时运行的推理数；Ollama 的 `11434` 端口没有直接暴露。
+当前 SakuraFrp 地址为 `https://api.u261625.nyat.app:30689/api/chat`，电脑必须保持开机、联网并运行 Ollama、`start-local-backend.sh` 和 SakuraFrp 的 `frpc` 隧道。隧道只转发本机 `8765` 端口；本机后端只允许 GitHub Pages 来源，并限制请求频率、请求体大小和同时运行的推理数；Ollama 的 `11434` 端口没有直接暴露。
 
-长期使用时，建议把 Ollama 放到持续在线的 GPU 服务器，并使用 Cloudflare 命名隧道或带访问控制的公网中继。不要把 Ollama 端口直接暴露到公网，也不要把任何密钥写进网页源码。
+长期使用时，建议让这台 Mac 保持持续在线，并为 SakuraFrp 客户端设置开机启动。不要把 Ollama 端口直接暴露到公网，也不要把任何密钥写进网页源码。
 
 ## 带 API key 的纯净接口
 
