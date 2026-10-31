@@ -1,5 +1,7 @@
 # 本页问答后端
 
+Pro 100 是否有可用 API 额度，要先在 ChatGPT 的设置 → Billing 或 API Platform Billing 中领取/确认对应的 API credits，并在 API organization/project 中创建密钥；ChatGPT 订阅额度和 API 额度是两套独立的计费系统。
+
 网页端已经在每一个主页、课程目录和逐页课件页加入“本页问答”。默认接口是本机 `http://127.0.0.1:8765/api/chat`，API 密钥只从本机环境变量读取，不会进入网页代码或 GitHub 仓库。
 
 ## 在本机试用
