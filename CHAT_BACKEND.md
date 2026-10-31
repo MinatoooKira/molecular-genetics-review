@@ -1,6 +1,6 @@
 # 本页问答：本机 DeepSeek R1 14B
 
-网页中的“本页问答”固定使用你自己电脑上的 `deepseek-r1:14b`。网页仍然托管在 GitHub Pages，但回答请求会发给本机 `127.0.0.1` 上运行的 Ollama；不会把 API key 放进网页，也不会把页面内容上传到第三方模型服务。
+网页中的“本页问答”固定使用你自己电脑上的 `deepseek-r1:14b`。网页仍然托管在 GitHub Pages，当前通过 Cloudflare Quick Tunnel 将请求安全转发到本机 `127.0.0.1` 上运行的 Ollama，因此其他人也可以使用同一个本机模型。
 
 ## 第一次安装
 
@@ -41,9 +41,9 @@
 
 在浏览器打开 [http://127.0.0.1:8765/](http://127.0.0.1:8765/)，应看到 JSON 状态，其中 `ollama_reachable` 为 `true`、`local_model` 为 `deepseek-r1:14b`。如果网页提示无法连接，通常是 Ollama 或 `start-local-backend.sh` 没有运行。
 
-## 重要边界
+## 公网共享的运行条件
 
-这个连接方式只对正在运行后端的这台电脑生效。GitHub Pages 是静态网页，不能替你的电脑运行 14B；其他用户打开网页时不会自动使用你的本机模型。若以后需要让其他用户也能问，需要另行准备一台持续在线的模型服务器或安全的公网转发服务。
+要让其他用户使用，必须同时保持这台 Mac、Ollama、本机问答后端和 Cloudflare Tunnel 运行。电脑休眠、关机、网络变化或 Quick Tunnel 进程退出时，网页上的问答会暂时不可用。Quick Tunnel 的网址是临时网址；如果重新创建隧道，必须把新网址同步到 `chat-widget.js` 并重新发布。长期稳定运行建议改用 Cloudflare 账号下的命名隧道或独立 GPU 服务器。
 
 ## 不想启动后端时
 

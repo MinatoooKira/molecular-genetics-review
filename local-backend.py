@@ -3,6 +3,8 @@
 import json
 import os
 import sys
+import threading
+import time
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -13,6 +15,12 @@ OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434/api/chat")
 LOCAL_MODEL = os.environ.get("LOCAL_MODEL", "deepseek-r1:14b")
 BACKEND_MODE = os.environ.get("CHAT_BACKEND", "ollama").lower()
 MAX_BODY = 1_000_000
+ALLOWED_ORIGIN = os.environ.get("MOLECULAR_CHAT_ALLOWED_ORIGIN", "https://minatoookira.github.io")
+RATE_WINDOW_SECONDS = 60
+RATE_LIMIT = 8
+rate_lock = threading.Lock()
+rate_buckets = {}
+inference_slot = threading.BoundedSemaphore(1)
 
 SYSTEM_PROMPT = """你是分子生物学与遗传学课程的中文助教。用户提供的资料只对应当前可见的一页课件。回答必须以资料中的“当前页定位”和“标题”为准，不得把其他页或课程的一般知识冒充当前页内容。用户问“这一页”时，先用一句话明确当前页编号和标题，再回答问题；如果用户的问题与当前页无关，先指出当前页是什么，并说明需要切换页面后再问。只使用用户提供的当前页资料和对话历史，不要编造。资料中已经明确写出的碱基、方向、数值、因果关系必须原样保留；不要用相关但不同的概念替换它们（例如不能把页面明确写的“5mC 脱氨产生 T”改写成“产生 U”）。如果资料不足或资料之间有冲突，明确指出，不要猜。回答使用简体中文，先给结论，再分层解释机制、图示和术语；必要时指出常见误区。"""
 
@@ -21,12 +29,34 @@ class BackendError(Exception):
     pass
 
 
+def request_origin(handler):
+    origin = handler.headers.get("Origin", "").strip()
+    return origin if origin == ALLOWED_ORIGIN or origin in ("", "null", "http://localhost", "http://127.0.0.1") else None
+
+
+def client_identity(handler):
+    forwarded = handler.headers.get("CF-Connecting-IP") or handler.headers.get("X-Forwarded-For")
+    return (forwarded or handler.client_address[0] or "unknown").split(",", 1)[0].strip()
+
+
+def is_rate_limited(handler):
+    now = time.monotonic()
+    identity = client_identity(handler)
+    with rate_lock:
+        recent = [stamp for stamp in rate_buckets.get(identity, []) if now - stamp < RATE_WINDOW_SECONDS]
+        recent.append(now)
+        rate_buckets[identity] = recent
+        return len(recent) > RATE_LIMIT
+
+
 def response(handler, status, payload):
     raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    origin = request_origin(handler) or ALLOWED_ORIGIN
     handler.send_response(status)
     handler.send_header("Content-Type", "application/json; charset=utf-8")
     handler.send_header("Content-Length", str(len(raw)))
-    handler.send_header("Access-Control-Allow-Origin", "*")
+    handler.send_header("Access-Control-Allow-Origin", origin)
+    handler.send_header("Vary", "Origin")
     handler.send_header("Access-Control-Allow-Headers", "Content-Type")
     handler.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
     handler.end_headers()
@@ -83,6 +113,9 @@ class Handler(BaseHTTPRequestHandler):
         sys.stderr.write("[local-backend] " + (fmt % args) + "\n")
 
     def do_OPTIONS(self):
+        if request_origin(self) is None:
+            response(self, 403, {"error": "来源未获允许"})
+            return
         response(self, 204, {})
 
     def do_GET(self):
@@ -97,6 +130,12 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path.rstrip("/") != "/api/chat":
             response(self, 404, {"error": "路径不存在"})
+            return
+        if request_origin(self) is None:
+            response(self, 403, {"error": "来源未获允许"})
+            return
+        if is_rate_limited(self):
+            response(self, 429, {"error": "请求过于频繁，请稍后再试"})
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -132,11 +171,17 @@ class Handler(BaseHTTPRequestHandler):
         page_header = f"课程：{context.get('course') or '未提供'}\n课件当前页：第 {page_no} / {page_count} 页\n当前页标题：{page_title}"
         input_text = "【当前页唯一资料】\n" + page_header + "\n" + page_text + "\n\n【对话历史】\n" + "\n".join(clean)
 
-        try:
-            answer = call_ollama(input_text)
-        except BackendError as error:
-            response(self, 503, {"error": str(error) + f"。请确认已运行 ollama pull {LOCAL_MODEL}。"})
+        if not inference_slot.acquire(blocking=False):
+            response(self, 429, {"error": "当前正在回答另一条问题，请稍后再试"})
             return
+        try:
+            try:
+                answer = call_ollama(input_text)
+            except BackendError as error:
+                response(self, 503, {"error": str(error) + f"。请确认已运行 ollama pull {LOCAL_MODEL}。"})
+                return
+        finally:
+            inference_slot.release()
         response(self, 200, {"answer": answer, "model": LOCAL_MODEL, "backend": "ollama"})
 
 

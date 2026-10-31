@@ -2,7 +2,8 @@
   'use strict';
 
   const LOCAL_ENDPOINT = 'http://127.0.0.1:8765/api/chat';
-  const ENDPOINT = (window.MOLECULAR_CHAT_ENDPOINT || localStorage.getItem('molecular-chat-endpoint') || LOCAL_ENDPOINT).trim();
+  const PUBLIC_ENDPOINT = 'https://radio-lawrence-extremely-guam.trycloudflare.com/api/chat';
+  const ENDPOINT = (window.MOLECULAR_CHAT_ENDPOINT || localStorage.getItem('molecular-chat-endpoint') || PUBLIC_ENDPOINT || LOCAL_ENDPOINT).trim();
   const MODEL_LABEL = 'deepseek-r1:14b · 本机 Ollama';
   const MAX_STORED_MESSAGES = 24;
   const MAX_CONTEXT_CHARS = 18000;
@@ -195,7 +196,7 @@
     } catch (error) {
       const detail = String(error?.message || error);
       const hint = detail.includes('Failed to fetch') || detail.includes('NetworkError') || detail.includes('fetch')
-        ? '本机问答服务没有连接上。请先启动 Ollama 和 start-local-backend.sh；这个网页的问答会连接你自己的电脑。'
+        ? '问答服务暂时没有连接上。请确认本机 Ollama、start-local-backend.sh 和公网转发仍在运行。'
         : `问答接口暂时不可用：${detail}`;
       explainUnavailable(hint);
     } finally {
@@ -221,7 +222,7 @@
 
   function configureEndpoint() {
     const current = ENDPOINT;
-    const next = window.prompt('输入问答接口地址。默认使用本机：http://127.0.0.1:8765/api/chat', current);
+    const next = window.prompt('输入问答接口地址。当前默认使用本机 DeepSeek 的公网转发接口。', current);
     if (next == null) return;
     const value = next.trim();
     if (!value) { localStorage.removeItem('molecular-chat-endpoint'); window.location.reload(); return; }
