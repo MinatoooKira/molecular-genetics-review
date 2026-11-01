@@ -23,6 +23,9 @@ RATE_LIMIT = 8
 rate_lock = threading.Lock()
 rate_buckets = {}
 inference_slot = threading.BoundedSemaphore(1)
+QUEUE_SIZE = max(0, int(os.environ.get("MOLECULAR_CHAT_QUEUE_SIZE", "3")))
+# One request is active; QUEUE_SIZE additional requests may wait for it.
+inference_capacity = threading.BoundedSemaphore(QUEUE_SIZE + 1)
 
 SYSTEM_PROMPT = """你是分子生物学与遗传学课程的中文助教。用户提供的资料只对应当前可见的一页课件。回答必须以资料中的“当前页定位”和“标题”为准，不得把其他页或课程的一般知识冒充当前页内容。用户问“这一页”时，先用一句话明确当前页编号和标题，再回答问题；如果用户的问题与当前页无关，先指出当前页是什么，并说明需要切换页面后再问。只使用用户提供的当前页资料和对话历史，不要编造。资料中已经明确写出的碱基、方向、数值、因果关系必须原样保留；不要用相关但不同的概念替换它们（例如不能把页面明确写的“5mC 脱氨产生 T”改写成“产生 U”）。如果资料不足或资料之间有冲突，明确指出，不要猜。回答使用简体中文，先给结论，再分层解释机制、图示和术语；必要时指出常见误区。"""
 PLAIN_SYSTEM_PROMPT = """你是一个运行在本机上的 DeepSeek R1 14B 通用助理。直接回答用户提供的问题，不附加任何课程页面、网页、用户本地笔记或隐藏上下文。资料不足时说明不确定，不要编造。默认使用简体中文，先给结论，再给必要解释。"""
@@ -153,8 +156,21 @@ def ollama_is_reachable():
         return False
 
 
+def reserve_inference():
+    """Reserve either the active inference slot or a place in the wait queue."""
+    if not inference_capacity.acquire(blocking=False):
+        return False
+    inference_slot.acquire()
+    return True
+
+
+def release_inference():
+    inference_slot.release()
+    inference_capacity.release()
+
+
 class Handler(BaseHTTPRequestHandler):
-    server_version = "MolecularReviewLocal/2.0"
+    server_version = "MolecularReviewLocal/2.1"
 
     def log_message(self, fmt, *args):
         sys.stderr.write("[local-backend] " + (fmt % args) + "\n")
@@ -171,6 +187,8 @@ class Handler(BaseHTTPRequestHandler):
             "backend_mode": BACKEND_MODE,
             "local_model": LOCAL_MODEL,
             "ollama_reachable": ollama_is_reachable(),
+            "inference_mode": f"1 active + {QUEUE_SIZE} queued",
+            "queue_size": QUEUE_SIZE,
             "message": "本机问答服务已启动",
         })
 
@@ -213,8 +231,8 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError as error:
                 response(self, 400, {"error": str(error)})
                 return
-            if not inference_slot.acquire(blocking=False):
-                response(self, 429, {"error": "当前正在回答另一条问题，请稍后再试"})
+            if not reserve_inference():
+                response(self, 429, {"error": f"问答队列已满（正在回答 1 条，另有 {QUEUE_SIZE} 条排队），请稍后再试"})
                 return
             try:
                 try:
@@ -223,7 +241,7 @@ class Handler(BaseHTTPRequestHandler):
                     response(self, 503, {"error": str(error)})
                     return
             finally:
-                inference_slot.release()
+                release_inference()
             response(self, 200, openai_response(answer))
             return
         context = payload.get("pageContext") or {}
@@ -248,8 +266,8 @@ class Handler(BaseHTTPRequestHandler):
         page_header = f"课程：{context.get('course') or '未提供'}\n课件当前页：第 {page_no} / {page_count} 页\n当前页标题：{page_title}"
         input_text = "【当前页唯一资料】\n" + page_header + "\n" + page_text + "\n\n【对话历史】\n" + "\n".join(clean)
 
-        if not inference_slot.acquire(blocking=False):
-            response(self, 429, {"error": "当前正在回答另一条问题，请稍后再试"})
+        if not reserve_inference():
+            response(self, 429, {"error": f"问答队列已满（正在回答 1 条，另有 {QUEUE_SIZE} 条排队），请稍后再试"})
             return
         try:
             try:
@@ -258,7 +276,7 @@ class Handler(BaseHTTPRequestHandler):
                 response(self, 503, {"error": str(error) + f"。请确认已运行 ollama pull {LOCAL_MODEL}。"})
                 return
         finally:
-            inference_slot.release()
+            release_inference()
         response(self, 200, {"answer": answer, "model": LOCAL_MODEL, "backend": "ollama"})
 
 
