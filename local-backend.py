@@ -55,16 +55,18 @@ def is_rate_limited(handler):
         return len(recent) > RATE_LIMIT
 
 
-def response(handler, status, payload):
-    raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    origin = request_origin(handler) or ALLOWED_ORIGIN
+def response(handler, status, payload, allow_any_origin=False):
+    raw = b"" if status == 204 else json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    requested_origin = handler.headers.get("Origin", "").strip()
+    api_request = handler.path.split("?", 1)[0].rstrip("/").startswith("/v1/")
+    origin = requested_origin if (allow_any_origin or api_request) and requested_origin else (request_origin(handler) or ALLOWED_ORIGIN)
     handler.send_response(status)
     handler.send_header("Content-Type", "application/json; charset=utf-8")
     handler.send_header("Content-Length", str(len(raw)))
     handler.send_header("Access-Control-Allow-Origin", origin)
     handler.send_header("Vary", "Origin")
-    handler.send_header("Access-Control-Allow-Headers", "Content-Type")
-    handler.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+    handler.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+    handler.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
     handler.end_headers()
     handler.wfile.write(raw)
 
@@ -142,9 +144,22 @@ def openai_response(answer):
     return {
         "id": "chatcmpl-local-deepseek-r1-14b",
         "object": "chat.completion",
+        "created": int(time.time()),
         "model": LOCAL_MODEL,
         "choices": [{"index": 0, "message": {"role": "assistant", "content": answer}, "finish_reason": "stop"}],
+        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
     }
+
+
+def model_catalog():
+    return {
+        "object": "list",
+        "data": [{"id": LOCAL_MODEL, "object": "model", "owned_by": "local-ollama"}],
+    }
+
+
+def is_api_path(path):
+    return path == "/v1/models" or path == "/v1/chat/completions" or path.startswith("/v1/models/")
 
 
 def ollama_is_reachable():
@@ -170,18 +185,35 @@ def release_inference():
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "MolecularReviewLocal/2.1"
+    server_version = "MolecularReviewLocal/2.2"
 
     def log_message(self, fmt, *args):
         sys.stderr.write("[local-backend] " + (fmt % args) + "\n")
 
     def do_OPTIONS(self):
+        path = self.path.split("?", 1)[0].rstrip("/")
+        if is_api_path(path):
+            response(self, 204, {}, allow_any_origin=True)
+            return
         if request_origin(self) is None:
             response(self, 403, {"error": "来源未获允许"})
             return
         response(self, 204, {})
 
     def do_GET(self):
+        path = self.path.split("?", 1)[0].rstrip("/")
+        if path == "/v1/models":
+            if not API_KEY:
+                response(self, 503, {"error": "本机 API 尚未生成密钥"})
+                return
+            if not api_key_is_valid(self):
+                response(self, 401, {"error": "需要有效的 Authorization: Bearer <API key>"})
+                return
+            response(self, 200, model_catalog(), allow_any_origin=True)
+            return
+        if path.startswith("/v1/"):
+            response(self, 404, {"error": "路径不存在"}, allow_any_origin=True)
+            return
         response(self, 200, {
             "ok": True,
             "backend_mode": BACKEND_MODE,
@@ -204,7 +236,7 @@ class Handler(BaseHTTPRequestHandler):
             if not api_key_is_valid(self):
                 response(self, 401, {"error": "需要有效的 Authorization: Bearer <API key>"})
                 return
-        if request_origin(self) is None:
+        if not is_api_path(path) and request_origin(self) is None:
             response(self, 403, {"error": "来源未获允许"})
             return
         if is_rate_limited(self):
@@ -223,9 +255,16 @@ class Handler(BaseHTTPRequestHandler):
             response(self, 400, {"error": "请求不是有效 JSON"})
             return
         if path == "/v1/models":
-            response(self, 200, {"object": "list", "data": [{"id": LOCAL_MODEL, "object": "model", "owned_by": "local-ollama"}]})
+            response(self, 200, model_catalog(), allow_any_origin=True)
             return
         if path == "/v1/chat/completions":
+            requested_model = payload.get("model")
+            if requested_model and requested_model != LOCAL_MODEL:
+                response(self, 400, {"error": f"当前只提供模型 {LOCAL_MODEL}"}, allow_any_origin=True)
+                return
+            if payload.get("stream") is True:
+                response(self, 400, {"error": "当前接口暂不支持 stream=true，请使用默认的非流式请求"}, allow_any_origin=True)
+                return
             try:
                 messages = openai_messages(payload)
             except ValueError as error:
@@ -242,7 +281,7 @@ class Handler(BaseHTTPRequestHandler):
                     return
             finally:
                 release_inference()
-            response(self, 200, openai_response(answer))
+            response(self, 200, openai_response(answer), allow_any_origin=True)
             return
         context = payload.get("pageContext") or {}
         messages = payload.get("messages") or []

@@ -12,4 +12,6 @@
 
 本机后端另提供 OpenAI 兼容的 `/v1/chat/completions` 和 `/v1/models`。这两个接口要求 `Authorization: Bearer <API key>`，只处理调用者自己提交的消息，不附加课件上下文。用法见 [LOCAL_API.md](LOCAL_API.md)。
 
+纯净 API 的公网基础地址是 `https://api.u261625.nyat.app:30689/v1`。
+
 API key 不应写入 GitHub Pages 的 JavaScript；网页端继续使用 `/api/chat`，由后端按当前页面组装上下文。
